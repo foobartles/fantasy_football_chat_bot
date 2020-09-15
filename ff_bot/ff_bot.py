@@ -3,7 +3,7 @@ import json
 import os
 import random
 from apscheduler.schedulers.blocking import BlockingScheduler
-from ff_espn_api import League
+from espn_api.football import League
 
 class GroupMeException(Exception):
     pass
@@ -129,11 +129,17 @@ def get_projected_total(lineup):
     total_projected = 0
     for i in lineup:
         if i.slot_position != 'BE':
-            if i.points != 0:
+            if i.points != 0 or i.game_played > 0:
                 total_projected += i.points
             else:
                 total_projected += i.projected_points
     return total_projected
+
+def all_played(lineup):
+    for i in lineup:
+        if i.slot_position != 'BE' and i.game_played < 100:
+            return False
+    return True
 
 def get_matchups(league, week=None):
     #Gets current week's Matchups
@@ -153,11 +159,11 @@ def get_close_scores(league, week=None):
     for i in matchups:
         if i.away_team:
             diffScore = i.away_score - i.home_score
-            if -16 < diffScore < 16:
+            if ( -16 < diffScore <= 0 and not all_played(i.away_lineup)) or (0 <= diffScore < 16 and not all_played(i.home_lineup)):
                 score += ['%s %.2f - %.2f %s' % (i.home_team.team_abbrev, i.home_score,
                         i.away_score, i.away_team.team_abbrev)]
     if not score:
-        score = ['None']
+        return('')
     text = ['Close Scores'] + score
     return '\n'.join(text)
 
@@ -202,7 +208,8 @@ def get_trophies(league, week=None):
         if i.away_score < low_score:
             low_score = i.away_score
             low_team_name = i.away_team.team_name
-        if abs(i.away_score - i.home_score) < closest_score:
+        if i.away_score - i.home_score != 0 and \
+            abs(i.away_score - i.home_score) < closest_score:
             closest_score = abs(i.away_score - i.home_score)
             if i.away_score - i.home_score < 0:
                 close_winner = i.home_team.team_name
@@ -248,7 +255,7 @@ def bot_main(function):
     try:
         year = int(os.environ["LEAGUE_YEAR"])
     except KeyError:
-        year=2019
+        year=2020
 
     try:
         swid = os.environ["SWID"]
@@ -265,13 +272,26 @@ def bot_main(function):
     except KeyError:
         espn_s2 = '1'
 
+    try:
+        espn_username = os.environ["ESPN_USERNAME"]
+    except KeyError:
+        espn_username = '1'
+
+    try:
+        espn_password = os.environ["ESPN_PASSWORD"]
+    except KeyError:
+        espn_password = '1'
+
     bot = GroupMeBot(bot_id)
     slack_bot = SlackBot(slack_webhook_url)
     discord_bot = DiscordBot(discord_webhook_url)
-    if swid == '{1}' and espn_s2 == '1':
-        league = League(league_id, year)
+
+    if swid == '{1}' and espn_s2 == '1': # and espn_username == '1' and espn_password == '1':
+        league = League(league_id=league_id, year=year)
     else:
-        league = League(league_id, year, espn_s2, swid)
+        league = League(league_id=league_id, year=year, espn_s2=espn_s2, swid=swid)
+#    if espn_username and espn_password:
+#        league = League(league_id=league_id, year=year, username=espn_username, password=espn_password)
 
     test = False
     if test:
@@ -329,12 +349,12 @@ if __name__ == '__main__':
     try:
         ff_start_date = os.environ["START_DATE"]
     except KeyError:
-        ff_start_date='2019-09-04'
+        ff_start_date='2020-09-10'
 
     try:
         ff_end_date = os.environ["END_DATE"]
     except KeyError:
-        ff_end_date='2019-12-30'
+        ff_end_date='2020-12-30'
 
     try:
         my_timezone = os.environ["TIMEZONE"]
